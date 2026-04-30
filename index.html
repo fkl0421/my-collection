@@ -3,339 +3,435 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>個人收藏管理系統 - 動態分類版</title>
+    <title>個人高級收藏庫 V3 - 多圖/動態選項版</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/dexie/dist/dexie.js"></script>
     <style>
         .aspect-card { aspect-ratio: 2 / 3; }
         .line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-        .active-cat { background-color: #dbeafe; color: #1d4ed8; font-weight: 600; border-left: 4px solid #3b82f6; }
+        .active-cat { background-color: #3b82f6; color: white; box-shadow: 0 4px 6px -1px rgba(59, 130, 246, 0.5); }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
     </style>
 </head>
-<body class="bg-gray-50 text-gray-800 min-h-screen">
+<body class="bg-gray-50 text-gray-800 min-h-screen pb-20">
 
-    <nav class="bg-white shadow-sm sticky top-0 z-10">
-        <div class="max-w-7xl mx-auto px-4 py-3 flex flex-col md:flex-row items-center justify-between gap-4">
-            <h1 class="text-xl font-bold text-blue-600">收藏資料庫</h1>
-            <div class="flex flex-1 w-full max-w-md">
-                <input type="text" id="searchInput" placeholder="搜尋名稱或備註..." 
-                    class="w-full px-4 py-2 border rounded-l-lg focus:outline-none focus:ring-2 focus:ring-blue-400">
-                <button onclick="renderGallery()" class="bg-blue-500 text-white px-4 py-2 rounded-r-lg">搜尋</button>
+    <nav class="bg-white shadow-md sticky top-0 z-40">
+        <div class="max-w-7xl mx-auto px-4 py-4 flex flex-col md:flex-row items-center justify-between gap-4">
+            <div class="flex items-center gap-2">
+                <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold">V3</div>
+                <h1 class="text-xl font-black text-gray-900 tracking-tight">MY COLLECTION</h1>
             </div>
+            
+            <div class="flex flex-1 w-full max-w-xl mx-4">
+                <input type="text" id="searchInput" oninput="renderGallery()" placeholder="搜尋關鍵字、價格或備註..." 
+                    class="w-full px-4 py-2 bg-gray-100 border-none rounded-l-xl focus:ring-2 focus:ring-blue-400">
+                <button class="bg-gray-200 px-4 rounded-r-xl text-gray-600 hover:bg-gray-300">🔍</button>
+            </div>
+
             <div class="flex gap-2">
-                <button onclick="openAddModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm transition">新增收藏</button>
-                <button onclick="exportData()" class="bg-gray-100 hover:bg-gray-200 px-3 py-2 rounded-lg text-sm">備份</button>
-                <input type="file" id="importFile" class="hidden" onchange="importData(event)">
-                <button onclick="document.getElementById('importFile').click()" class="bg-gray-100 hover:bg-gray-200 px-3 py-2 rounded-lg text-sm">還原</button>
+                <button onclick="openAddModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-xl font-bold shadow-lg transition">新增收藏</button>
+                <button onclick="exportData()" class="p-2 text-gray-400 hover:text-blue-600">📥</button>
             </div>
         </div>
     </nav>
 
-    <div class="max-w-7xl mx-auto px-4 py-6 flex flex-col md:flex-row gap-8">
-        <!-- 側邊欄 -->
-        <aside class="w-full md:w-56 flex-shrink-0">
-            <div class="flex items-center justify-between mb-4">
-                <h3 class="font-bold text-gray-400 uppercase text-xs tracking-wider">類別篩選</h3>
-                <button onclick="openCatModal()" class="text-blue-500 hover:text-blue-700 text-xs font-bold">+ 管理分類</button>
+    <div class="max-w-7xl mx-auto px-4 py-8 flex flex-col md:flex-row gap-8">
+        <aside class="w-full md:w-64 flex-shrink-0 space-y-8">
+            <div>
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-sm font-bold text-gray-400 tracking-widest uppercase">分類</h3>
+                    <button onclick="openManageModal('categories')" class="text-xs text-blue-500 underline">管理</button>
+                </div>
+                <div id="categoryList" class="flex flex-wrap md:flex-col gap-2"></div>
             </div>
-            <ul class="space-y-1" id="categoryList">
-                <!-- 分類由 JS 動態生成 -->
-            </ul>
+
+            <div class="p-4 bg-blue-50 rounded-2xl border border-blue-100">
+                <h4 class="text-blue-800 font-bold text-sm mb-1">統計資訊</h4>
+                <p class="text-xs text-blue-600 mb-3">收藏總數：<span id="statCount">0</span></p>
+                <p class="text-xs text-blue-600 font-bold">估計總價值：</p>
+                <p class="text-xl font-black text-blue-800">NT$ <span id="statPrice">0</span></p>
+            </div>
         </aside>
 
-        <!-- 主牆 -->
         <main class="flex-1">
             <div id="gallery" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6"></div>
         </main>
     </div>
 
-    <!-- 收藏項目彈窗 (Modal) -->
-    <div id="itemModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-        <div class="bg-white rounded-xl max-w-lg w-full p-6 shadow-2xl">
-            <h2 id="modalTitle" class="text-xl font-bold mb-4 border-b pb-2">收藏資料編修</h2>
-            <form id="itemForm" class="space-y-4">
+    <div id="itemModal" class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+        <div class="bg-white rounded-3xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl p-8">
+            <h2 id="modalTitle" class="text-2xl font-black mb-6">新增收藏</h2>
+            <form id="itemForm" class="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <input type="hidden" id="itemId">
+                
+                <div class="md:col-span-2">
+                    <label class="block text-sm font-bold mb-2">物品名稱 *</label>
+                    <input type="text" id="itemName" required class="w-full p-3 bg-gray-50 border rounded-xl outline-none focus:border-blue-500">
+                </div>
+
                 <div>
-                    <label class="block text-sm font-medium text-gray-700">名稱</label>
-                    <input type="text" id="itemName" required class="w-full mt-1 p-2 border rounded-md focus:ring-2 focus:ring-blue-500 outline-none">
+                    <label class="block text-sm font-bold mb-2">類別</label>
+                    <select id="itemCategory" class="w-full p-3 bg-gray-50 border rounded-xl outline-none"></select>
                 </div>
-                <div class="grid grid-cols-2 gap-4">
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700">類別</label>
-                        <select id="itemCategory" class="w-full mt-1 p-2 border rounded-md bg-white shadow-sm"></select>
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700">圖片 (點擊更換)</label>
-                        <input type="file" id="itemImage" accept="image/*" class="w-full text-xs mt-2">
-                    </div>
-                </div>
+
                 <div>
-                    <label class="block text-sm font-medium text-gray-700">備註</label>
-                    <textarea id="itemNote" rows="4" class="w-full mt-1 p-2 border rounded-md focus:ring-2 focus:ring-blue-500 outline-none" placeholder="輸入購買價格、存放位置等詳細資訊..."></textarea>
+                    <label class="block text-sm font-bold mb-2">價格 (TWD)</label>
+                    <input type="number" id="itemPrice" value="0" class="w-full p-3 bg-gray-50 border rounded-xl outline-none">
                 </div>
-                <div class="flex justify-end gap-3 pt-4 border-t">
-                    <button type="button" onclick="closeModal()" class="px-4 py-2 text-gray-500 font-medium">取消</button>
-                    <button type="submit" class="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 shadow-md">儲存收藏</button>
+
+                <div>
+                    <label class="block text-sm font-bold mb-2 flex justify-between">
+                        狀態 <span onclick="openManageModal('statuses')" class="text-xs text-blue-500 cursor-pointer">+管理</span>
+                    </label>
+                    <select id="itemStatus" class="w-full p-3 bg-gray-50 border rounded-xl outline-none"></select>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-bold mb-2 flex justify-between">
+                        來源 <span onclick="openManageModal('sources')" class="text-xs text-blue-500 cursor-pointer">+管理</span>
+                    </label>
+                    <select id="itemSource" class="w-full p-3 bg-gray-50 border rounded-xl outline-none"></select>
+                </div>
+
+                <div class="md:col-span-2">
+                    <label class="block text-sm font-bold mb-2 text-blue-600">上傳相片 (最多 5 張)</label>
+                    <input type="file" id="itemImages" accept="image/*" multiple class="w-full text-sm">
+                    <p class="text-[10px] text-gray-400 mt-1">選取多張圖片：按住 Ctrl 或 Shift 選擇</p>
+                </div>
+
+                <div class="md:col-span-2">
+                    <label class="block text-sm font-bold mb-2">詳細備註</label>
+                    <textarea id="itemNote" rows="3" class="w-full p-3 bg-gray-50 border rounded-xl outline-none"></textarea>
+                </div>
+
+                <div class="md:col-span-2 flex justify-end gap-3 pt-4">
+                    <button type="button" onclick="closeModal('itemModal')" class="px-6 py-2 text-gray-500 font-bold">取消</button>
+                    <button type="submit" class="px-10 py-2 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 shadow-lg transition">儲存收藏品</button>
                 </div>
             </form>
         </div>
     </div>
 
-    <!-- 分類管理彈窗 -->
-    <div id="catModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-[60]">
-        <div class="bg-white rounded-xl max-w-sm w-full p-6">
-            <h2 class="text-lg font-bold mb-4">管理分類標籤</h2>
-            <div class="space-y-3">
-                <div class="flex gap-2">
-                    <input type="text" id="newCatName" placeholder="新增分類..." class="flex-1 p-2 border rounded">
-                    <button onclick="addNewCategory()" class="bg-green-500 text-white px-3 py-1 rounded">+</button>
-                </div>
-                <ul id="catManageList" class="max-h-60 overflow-y-auto border rounded divide-y">
-                    <!-- 分類管理列表 -->
-                </ul>
+    <div id="manageModal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-[60]">
+        <div class="bg-white rounded-2xl max-w-xs w-full p-6 shadow-xl">
+            <h3 id="manageTitle" class="font-bold mb-4">管理選項</h3>
+            <div class="flex gap-2 mb-4">
+                <input type="text" id="newOptionInput" placeholder="輸入名稱..." class="flex-1 border rounded-lg p-2 text-sm">
+                <button onclick="addOption()" class="bg-blue-600 text-white px-3 rounded-lg">+</button>
             </div>
-            <div class="mt-6 flex justify-end">
-                <button onclick="closeCatModal()" class="px-4 py-2 bg-gray-800 text-white rounded">完成</button>
-            </div>
+            <ul id="optionList" class="max-h-60 overflow-y-auto divide-y border rounded-lg"></ul>
+            <button onclick="closeModal('manageModal')" class="w-full mt-4 py-2 bg-gray-100 rounded-lg text-sm">關閉</button>
         </div>
     </div>
 
-    <!-- 詳情查看彈窗 -->
-    <div id="detailModal" class="hidden fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center p-4 z-50">
-        <div class="bg-white rounded-2xl max-w-4xl w-full flex flex-col md:flex-row overflow-hidden shadow-2xl">
-            <div class="w-full md:w-1/2 bg-gray-100 flex items-center justify-center min-h-[300px]">
-                <img id="detailImg" src="" class="object-contain w-full h-full max-h-[80vh]">
+    <div id="detailModal" class="hidden fixed inset-0 bg-black/90 flex items-center justify-center p-0 md:p-8 z-50">
+        <div class="bg-white md:rounded-3xl w-full max-w-6xl h-full md:h-auto overflow-hidden flex flex-col md:flex-row">
+            <div class="w-full md:w-2/3 bg-black flex flex-col h-[50vh] md:h-[80vh]">
+                <div class="flex-1 flex items-center justify-center relative group">
+                    <img id="detailMainImg" src="" class="max-w-full max-h-full object-contain">
+                    <button onclick="changeDetailImg(-1)" class="absolute left-4 bg-black/20 text-white p-3 rounded-full hover:bg-black/50">❮</button>
+                    <button onclick="changeDetailImg(1)" class="absolute right-4 bg-black/20 text-white p-3 rounded-full hover:bg-black/50">❯</button>
+                </div>
+                <div id="detailThumbnails" class="h-20 bg-gray-900/50 flex gap-2 p-2 overflow-x-auto no-scrollbar justify-center"></div>
             </div>
-            <div class="p-8 w-full md:w-1/2 flex flex-col">
+            <div class="w-full md:w-1/3 p-8 flex flex-col overflow-y-auto">
                 <div class="flex justify-between items-start mb-6">
-                    <div>
-                        <span id="detailBadge" class="bg-blue-600 text-white text-[10px] px-2 py-0.5 rounded uppercase font-bold tracking-wider"></span>
-                        <h2 id="detailName" class="text-3xl font-extrabold mt-2 text-gray-900 leading-tight"></h2>
+                    <div class="flex flex-col gap-1">
+                        <span id="detailCat" class="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-black w-fit"></span>
+                        <h2 id="detailName" class="text-3xl font-black text-gray-900 leading-tight"></h2>
                     </div>
-                    <button onclick="closeDetail()" class="text-gray-400 hover:text-gray-600 text-3xl">&times;</button>
+                    <button onclick="closeModal('detailModal')" class="text-3xl text-gray-300 hover:text-gray-900">✕</button>
                 </div>
-                <div class="flex-1 bg-gray-50 p-5 rounded-xl border border-gray-100 overflow-y-auto">
-                    <p id="detailNote" class="text-gray-700 whitespace-pre-wrap leading-relaxed"></p>
+
+                <div class="grid grid-cols-2 gap-4 mb-6">
+                    <div class="bg-gray-50 p-3 rounded-xl">
+                        <p class="text-[10px] text-gray-400 font-bold">入手價格</p>
+                        <p class="text-lg font-black text-blue-600">NT$ <span id="detailPrice">0</span></p>
+                    </div>
+                    <div class="bg-gray-50 p-3 rounded-xl">
+                        <p class="text-[10px] text-gray-400 font-bold">狀態/來源</p>
+                        <p class="text-sm font-bold"><span id="detailStatus"></span> / <span id="detailSource"></span></p>
+                    </div>
                 </div>
-                <div class="mt-8 flex gap-3">
-                    <button id="editBtn" class="flex-1 py-3 bg-white border-2 border-blue-600 text-blue-600 font-bold rounded-xl hover:bg-blue-50 transition">編輯細節</button>
-                    <button id="deleteBtn" class="px-4 text-red-400 hover:text-red-600 font-medium">刪除項目</button>
+
+                <div class="flex-1 border-t pt-4">
+                    <p class="text-xs text-gray-400 font-bold mb-2 uppercase">備註</p>
+                    <p id="detailNote" class="text-gray-600 text-sm whitespace-pre-wrap leading-relaxed"></p>
+                </div>
+
+                <div class="mt-8 flex gap-2">
+                    <button id="editBtn" class="flex-1 py-3 bg-gray-100 rounded-xl font-bold hover:bg-gray-200">編輯資訊</button>
+                    <button id="deleteBtn" class="px-4 text-red-400 hover:text-red-600">刪除</button>
                 </div>
             </div>
         </div>
     </div>
 
     <script>
-        const db = new Dexie("MyGameVaultDB");
-        db.version(2).stores({
-            items: '++id, name, category, note',
-            categories: '++id, name'
+        // 1. 資料庫設計
+        const db = new Dexie("GameVaultProDB");
+        db.version(3).stores({
+            items: '++id, name, category, status, source, price',
+            categories: '++id, name',
+            statuses: '++id, name',
+            sources: '++id, name'
         });
 
         let currentCategory = '全部';
+        let currentDetailImages = [];
+        let currentDetailIdx = 0;
+        let manageTarget = ''; // 記錄當前正在管理哪個選項表
 
-        // 初始化預設分類
+        // 2. 初始化與預設值
         db.on("ready", async () => {
-            const count = await db.categories.count();
-            if (count === 0) {
-                await db.categories.bulkAdd([
-                    {name: '遊戲'}, {name: '模型'}, {name: '海報'}, {name: '卡片'}, {name: '設定集'}
-                ]);
-            }
-            renderCategories();
-            renderGallery();
+            if (await db.categories.count() === 0) await db.categories.bulkAdd([{name:'遊戲'},{name:'模型'},{name:'海報'},{name:'卡片'},{name:'設定集'}]);
+            if (await db.statuses.count() === 0) await db.statuses.bulkAdd([{name:'全新未拆'},{name:'全新已拆'},{name:'二手'},{name:'其他'}]);
+            if (await db.sources.count() === 0) await db.sources.bulkAdd([{name:'購入'},{name:'朋友贈送'},{name:'其他'}]);
+            renderUI();
         });
 
-        // 渲染側邊欄分類
-        async function renderCategories() {
-            const list = document.getElementById('categoryList');
-            const select = document.getElementById('itemCategory');
-            const manageList = document.getElementById('catManageList');
-            
+        async function renderUI() {
+            renderSidebar();
+            renderGallery();
+            renderSelects();
+            updateStats();
+        }
+
+        // 3. 渲染邏輯
+        async function renderSidebar() {
             const cats = await db.categories.toArray();
-            
-            // 1. 側邊欄
-            let listHtml = `<li><button onclick="filterCategory('全部')" class="w-full text-left px-3 py-2 rounded text-sm ${currentCategory === '全部' ? 'active-cat' : 'hover:bg-gray-200'}">全部收藏</button></li>`;
+            const container = document.getElementById('categoryList');
+            let html = `<button onclick="setCat('全部')" class="px-4 py-2 rounded-xl text-sm font-bold transition ${currentCategory==='全部'?'active-cat':'bg-white text-gray-500'}">全部</button>`;
             cats.forEach(c => {
-                const active = currentCategory === c.name ? 'active-cat' : 'hover:bg-gray-200';
-                listHtml += `<li><button onclick="filterCategory('${c.name}')" class="w-full text-left px-3 py-2 rounded text-sm ${active}">${c.name}</button></li>`;
+                const active = currentCategory === c.name ? 'active-cat' : 'bg-white text-gray-500 hover:bg-gray-100';
+                html += `<button onclick="setCat('${c.name}')" class="px-4 py-2 rounded-xl text-sm font-bold transition ${active}">${c.name}</button>`;
             });
-            list.innerHTML = listHtml;
+            container.innerHTML = html;
+        }
 
-            // 2. 下拉選單
-            select.innerHTML = cats.map(c => `<option value="${c.name}">${c.name}</option>`).join('');
-            select.innerHTML += `<option value="未分類">未分類</option>`;
+        async function renderGallery() {
+            const search = document.getElementById('searchInput').value.toLowerCase();
+            const items = await db.items.toArray();
+            const container = document.getElementById('gallery');
+            container.innerHTML = '';
 
-            // 3. 管理列表
-            manageList.innerHTML = cats.map(c => `
-                <div class="flex items-center justify-between p-2">
-                    <span class="text-sm">${c.name}</span>
-                    <button onclick="deleteCategory(${c.id}, '${c.name}')" class="text-red-500 text-xs px-2 py-1 hover:bg-red-50 rounded">刪除</button>
-                </div>
+            const filtered = items.filter(i => {
+                const matchCat = currentCategory === '全部' || i.category === currentCategory;
+                const matchSearch = i.name.toLowerCase().includes(search) || (i.note && i.note.toLowerCase().includes(search));
+                return matchCat && matchSearch;
+            });
+
+            filtered.reverse().forEach(item => {
+                const card = document.createElement('div');
+                card.className = "bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-xl transition duration-300 cursor-pointer group";
+                card.onclick = () => showDetail(item.id);
+                card.innerHTML = `
+                    <div class="aspect-card bg-gray-50 relative overflow-hidden">
+                        <img src="${item.images?.[0] || 'https://via.placeholder.com/300x450'}" class="w-full h-full object-cover group-hover:scale-110 transition duration-500">
+                        <div class="absolute bottom-2 right-2 bg-black/50 text-white text-[10px] px-2 py-0.5 rounded-full backdrop-blur-sm">
+                            NT$ ${Number(item.price).toLocaleString()}
+                        </div>
+                    </div>
+                    <div class="p-4">
+                        <h4 class="font-bold text-gray-900 truncate">${item.name}</h4>
+                        <p class="text-[10px] text-gray-400 font-bold mt-1 uppercase">${item.status} · ${item.category}</p>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        async function renderSelects() {
+            const cats = await db.categories.toArray();
+            const stats = await db.statuses.toArray();
+            const srcs = await db.sources.toArray();
+            
+            document.getElementById('itemCategory').innerHTML = cats.map(c=>`<option value="${c.name}">${c.name}</option>`).join('');
+            document.getElementById('itemStatus').innerHTML = stats.map(c=>`<option value="${c.name}">${c.name}</option>`).join('');
+            document.getElementById('itemSource').innerHTML = srcs.map(c=>`<option value="${c.name}">${c.name}</option>`).join('');
+        }
+
+        async function updateStats() {
+            const items = await db.items.toArray();
+            const total = items.reduce((sum, i) => sum + Number(i.price || 0), 0);
+            document.getElementById('statCount').innerText = items.length;
+            document.getElementById('statPrice').innerText = total.toLocaleString();
+        }
+
+        // 4. 新增/編輯功能 (支援多圖)
+        function openAddModal() {
+            document.getElementById('itemForm').reset();
+            document.getElementById('itemId').value = '';
+            document.getElementById('modalTitle').innerText = '新增收藏';
+            document.getElementById('itemModal').classList.remove('hidden');
+        }
+
+        document.getElementById('itemForm').onsubmit = async (e) => {
+            e.preventDefault();
+            const id = document.getElementById('itemId').value;
+            const files = document.getElementById('itemImages').files;
+            
+            let images = [];
+            if (files.length > 0) {
+                for (let i = 0; i < Math.min(files.length, 5); i++) {
+                    const b64 = await toBase64(files[i]);
+                    images.push(b64);
+                }
+            }
+
+            const data = {
+                name: document.getElementById('itemName').value,
+                category: document.getElementById('itemCategory').value,
+                price: Number(document.getElementById('itemPrice').value),
+                status: document.getElementById('itemStatus').value,
+                source: document.getElementById('itemSource').value,
+                note: document.getElementById('itemNote').value
+            };
+
+            if (id) {
+                const old = await db.items.get(Number(id));
+                data.images = images.length > 0 ? images : old.images;
+                await db.items.update(Number(id), data);
+            } else {
+                data.images = images;
+                await db.items.add(data);
+            }
+            
+            closeModal('itemModal');
+            renderUI();
+        };
+
+        // 5. 詳情視窗 (支援多圖切換)
+        async function showDetail(id) {
+            const item = await db.items.get(id);
+            currentDetailImages = item.images || [];
+            currentDetailIdx = 0;
+
+            document.getElementById('detailName').innerText = item.name;
+            document.getElementById('detailPrice').innerText = Number(item.price).toLocaleString();
+            document.getElementById('detailCat').innerText = item.category;
+            document.getElementById('detailStatus').innerText = item.status;
+            document.getElementById('detailSource').innerText = item.source;
+            document.getElementById('detailNote').innerText = item.note || '無詳細備註...';
+
+            updateDetailImg();
+            
+            document.getElementById('editBtn').onclick = () => openEditItem(item);
+            document.getElementById('deleteBtn').onclick = () => deleteItem(item.id);
+            document.getElementById('detailModal').classList.remove('hidden');
+        }
+
+        function updateDetailImg() {
+            const main = document.getElementById('detailMainImg');
+            const thumbContainer = document.getElementById('detailThumbnails');
+            
+            if (currentDetailImages.length > 0) {
+                main.src = currentDetailImages[currentDetailIdx];
+                thumbContainer.innerHTML = currentDetailImages.map((img, idx) => `
+                    <img src="${img}" onclick="setDetailIdx(${idx})" 
+                        class="h-full aspect-square object-cover rounded cursor-pointer border-2 ${idx===currentDetailIdx?'border-blue-500':'border-transparent'}">
+                `).join('');
+            } else {
+                main.src = 'https://via.placeholder.com/600x800?text=No+Image';
+                thumbContainer.innerHTML = '';
+            }
+        }
+
+        function changeDetailImg(step) {
+            if (currentDetailImages.length === 0) return;
+            currentDetailIdx = (currentDetailIdx + step + currentDetailImages.length) % currentDetailImages.length;
+            updateDetailImg();
+        }
+
+        function setDetailIdx(idx) {
+            currentDetailIdx = idx;
+            updateDetailImg();
+        }
+
+        function openEditItem(item) {
+            closeModal('detailModal');
+            document.getElementById('itemId').value = item.id;
+            document.getElementById('itemName').value = item.name;
+            document.getElementById('itemCategory').value = item.category;
+            document.getElementById('itemPrice').value = item.price;
+            document.getElementById('itemStatus').value = item.status;
+            document.getElementById('itemSource').value = item.source;
+            document.getElementById('itemNote').value = item.note;
+            document.getElementById('modalTitle').innerText = '編輯收藏';
+            document.getElementById('itemModal').classList.remove('hidden');
+        }
+
+        // 6. 管理選項 (分類/狀態/來源)
+        async function openManageModal(table) {
+            manageTarget = table;
+            const titles = { categories: '管理分類標籤', statuses: '管理狀態選項', sources: '管理來源管道' };
+            document.getElementById('manageTitle').innerText = titles[table];
+            renderOptions();
+            document.getElementById('manageModal').classList.remove('hidden');
+        }
+
+        async function renderOptions() {
+            const items = await db[manageTarget].toArray();
+            document.getElementById('optionList').innerHTML = items.map(i => `
+                <li class="flex justify-between items-center p-3 text-sm">
+                    ${i.name}
+                    <button onclick="deleteOption(${i.id})" class="text-red-400 hover:text-red-600">移除</button>
+                </li>
             `).join('');
         }
 
-        // 分類操作
-        async function addNewCategory() {
-            const name = document.getElementById('newCatName').value.trim();
-            if (name) {
-                const exists = await db.categories.where('name').equals(name).first();
-                if (exists) return alert('分類已存在');
-                await db.categories.add({name});
-                document.getElementById('newCatName').value = '';
-                renderCategories();
+        async function addOption() {
+            const input = document.getElementById('newOptionInput');
+            const val = input.value.trim();
+            if (val) {
+                await db[manageTarget].add({name: val});
+                input.value = '';
+                renderOptions();
+                renderSelects();
+                renderSidebar();
             }
         }
 
-        async function deleteCategory(id, name) {
-            if (confirm(`確定要刪除「${name}」嗎？此分類下的物品將標註為「未分類」。`)) {
-                await db.categories.delete(id);
-                // 更新受影響的物品
-                await db.items.where('category').equals(name).modify({category: '未分類'});
-                if (currentCategory === name) currentCategory = '全部';
-                renderCategories();
-                renderGallery();
+        async function deleteOption(id) {
+            if (confirm('確定移除此選項？')) {
+                await db[manageTarget].delete(id);
+                renderOptions();
+                renderSelects();
+                renderSidebar();
             }
         }
 
-        function openCatModal() { document.getElementById('catModal').classList.remove('hidden'); }
-        function closeCatModal() { document.getElementById('catModal').classList.add('hidden'); }
-
-        // --- 核心功能 (其餘同前版，稍作優化) ---
-
-        async function renderGallery() {
-            const gallery = document.getElementById('gallery');
-            const search = document.getElementById('searchInput').value.toLowerCase();
-            gallery.innerHTML = '';
-
-            let items = await db.items.toArray();
-            items = items.filter(i => {
-                const matchCategory = (currentCategory === '全部' || i.category === currentCategory);
-                const matchSearch = (i.name.toLowerCase().includes(search) || (i.note && i.note.toLowerCase().includes(search)));
-                return matchCategory && matchSearch;
-            });
-
-            if (items.length === 0) {
-                gallery.innerHTML = '<div class="col-span-full py-20 text-center text-gray-400">目前沒有符合條件的收藏品</div>';
-            }
-
-            items.forEach(item => {
-                const card = document.createElement('div');
-                card.className = 'bg-white rounded-xl shadow-sm overflow-hidden hover:shadow-xl transition-all duration-300 cursor-pointer group border border-gray-100';
-                card.onclick = () => showDetail(item.id);
-                card.innerHTML = `
-                    <div class="aspect-card bg-gray-50 overflow-hidden border-b border-gray-50">
-                        <img src="${item.image || 'https://via.placeholder.com/300x450?text=No+Image'}" class="w-full h-full object-cover group-hover:scale-110 transition duration-500">
-                    </div>
-                    <div class="p-4">
-                        <span class="text-[9px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full font-extrabold uppercase tracking-tighter">${item.category || '未分類'}</span>
-                        <h4 class="font-bold text-gray-900 truncate mt-2 group-hover:text-blue-600">${item.name}</h4>
-                    </div>`;
-                gallery.appendChild(card);
-            });
-        }
-
-        function getBase64(file) {
+        // 輔助函式
+        function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+        function setCat(cat) { currentCategory = cat; renderUI(); }
+        function toBase64(file) {
             return new Promise((resolve) => {
                 const reader = new FileReader();
                 reader.readAsDataURL(file);
                 reader.onload = () => resolve(reader.result);
             });
         }
-
-        document.getElementById('itemForm').onsubmit = async (e) => {
-            e.preventDefault();
-            const id = document.getElementById('itemId').value;
-            const file = document.getElementById('itemImage').files[0];
-            const itemData = {
-                name: document.getElementById('itemName').value,
-                category: document.getElementById('itemCategory').value,
-                note: document.getElementById('itemNote').value
-            };
-            if (file) itemData.image = await getBase64(file);
-            if (id) {
-                const existing = await db.items.get(Number(id));
-                if (!file) itemData.image = existing.image;
-                await db.items.update(Number(id), itemData);
-            } else {
-                await db.items.add(itemData);
-            }
-            closeModal();
-            renderGallery();
-        };
-
-        async function showDetail(id) {
-            const item = await db.items.get(id);
-            document.getElementById('detailName').innerText = item.name;
-            document.getElementById('detailBadge').innerText = item.category || '未分類';
-            document.getElementById('detailNote').innerText = item.note || '無詳細說明...';
-            document.getElementById('detailImg').src = item.image || 'https://via.placeholder.com/600x800?text=No+Image';
-            document.getElementById('editBtn').onclick = () => openEditModal(item);
-            document.getElementById('deleteBtn').onclick = () => deleteItem(item.id);
-            document.getElementById('detailModal').classList.remove('hidden');
-        }
-
-        function openEditModal(item) {
-            closeDetail();
-            document.getElementById('itemId').value = item.id;
-            document.getElementById('itemName').value = item.name;
-            document.getElementById('itemCategory').value = item.category || '未分類';
-            document.getElementById('itemNote').value = item.note || '';
-            document.getElementById('modalTitle').innerText = '編輯收藏資訊';
-            document.getElementById('itemModal').classList.remove('hidden');
-        }
-
-        function closeModal() { document.getElementById('itemModal').classList.add('hidden'); }
-        function closeDetail() { document.getElementById('detailModal').classList.add('hidden'); }
-        function openAddModal() {
-            document.getElementById('itemForm').reset();
-            document.getElementById('itemId').value = '';
-            document.getElementById('modalTitle').innerText = '新增收藏項目';
-            document.getElementById('itemModal').classList.remove('hidden');
-        }
-
         async function deleteItem(id) {
-            if (confirm('確定要移除此收藏？此動作無法復原。')) {
+            if (confirm('確定要永久刪除此物品嗎？')) {
                 await db.items.delete(id);
-                closeDetail();
-                renderGallery();
+                closeModal('detailModal');
+                renderUI();
             }
         }
 
-        function filterCategory(cat) {
-            currentCategory = cat;
-            renderCategories();
-            renderGallery();
-        }
-
+        // 匯出備份 (包含所有自訂選項)
         async function exportData() {
             const items = await db.items.toArray();
             const categories = await db.categories.toArray();
-            const fullData = { items, categories };
-            const blob = new Blob([JSON.stringify(fullData)], {type: "application/json"});
+            const statuses = await db.statuses.toArray();
+            const sources = await db.sources.toArray();
+            const data = { items, categories, statuses, sources, version: 3 };
+            const blob = new Blob([JSON.stringify(data)], {type: "application/json"});
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `收藏備份_${new Date().toISOString().slice(0,10)}.json`;
+            a.download = `收藏庫備份V3_${new Date().toISOString().slice(0,10)}.json`;
             a.click();
-        }
-
-        async function importData(event) {
-            const file = event.target.files[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = async (e) => {
-                try {
-                    const data = JSON.parse(e.target.result);
-                    if (confirm('匯入將會增加新資料，是否繼續？')) {
-                        if (data.categories) await db.categories.bulkAdd(data.categories).catch(()=>{});
-                        if (data.items) await db.items.bulkAdd(data.items);
-                        renderCategories();
-                        renderGallery();
-                    }
-                } catch (err) { alert('檔案格式不正確'); }
-            };
-            reader.readAsText(file);
         }
 
         db.open();
