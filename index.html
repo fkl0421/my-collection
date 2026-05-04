@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>收藏管理系統 V7 - 終極完整版</title>
+    <title>收藏管理系統 V8 - 下拉選單修復版</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/dexie/dist/dexie.js"></script>
     <style>
@@ -19,7 +19,7 @@
     <nav class="bg-white border-b sticky top-0 z-40 backdrop-blur-md bg-white/90">
         <div class="max-w-7xl mx-auto px-4 py-3 flex flex-col md:flex-row items-center justify-between gap-4">
             <div class="flex items-center gap-2">
-                <div class="p-2 bg-indigo-600 rounded-xl text-white font-bold shadow-md">V7</div>
+                <div class="p-2 bg-indigo-600 rounded-xl text-white font-bold shadow-md">V8</div>
                 <h1 class="text-lg font-black tracking-tight uppercase">My Collection Vault</h1>
             </div>
             <div class="flex flex-1 w-full max-w-xl">
@@ -124,6 +124,7 @@
                 <button onclick="changeDetailImg(-1)" class="absolute left-4 top-1/2 -translate-y-1/2 w-11 h-11 bg-white/20 text-white rounded-full hover:bg-white/40 transition">❮</button>
                 <button onclick="changeDetailImg(1)" class="absolute right-4 top-1/2 -translate-y-1/2 w-11 h-11 bg-white/20 text-white rounded-full hover:bg-white/40 transition">❯</button>
             </div>
+            
             <div class="w-full md:w-2/5 p-8 md:p-12 flex flex-col overflow-y-auto">
                 <div class="flex justify-between items-start mb-6">
                     <div>
@@ -184,8 +185,7 @@
     </div>
 
     <script>
-        // 1. 資料庫宣告與初始化
-        const db = new Dexie("CollectionV7DB");
+        const db = new Dexie("CollectionV8DB");
         db.version(1).stores({
             items: '++id, name, category, subCategory, publisher, location, date',
             categories: '++id, name, parentId'
@@ -193,32 +193,44 @@
 
         let curCat = '全部', curSub = '全部', detailImgs = [], detailIdx = 0;
 
-        db.on("ready", async () => {
-            if (await db.categories.count() === 0) {
-                const gid = await db.categories.add({name: '遊戲', parentId: null});
+        // 核心：修復刪除資料庫後的「時差」問題
+        async function init() {
+            await db.open();
+            // 檢查是否是乾淨的資料庫，如果是，建立預設主類別 (parentId 為 0) 與子系列
+            const count = await db.categories.count();
+            if (count === 0) {
+                const gid = await db.categories.add({name: '遊戲', parentId: 0});
                 await db.categories.bulkAdd([
-                    {name: '大富翁', parentId: gid}, {name: '軒轅劍', parentId: gid},
-                    {name: '仙劍奇俠傳', parentId: gid}, {name: '漢堂系列', parentId: gid},
-                    {name: '週邊', parentId: null}
+                    {name: '大富翁', parentId: gid}, 
+                    {name: '軒轅劍', parentId: gid},
+                    {name: '仙劍奇俠傳', parentId: gid}, 
+                    {name: '漢堂系列', parentId: gid},
+                    {name: '週邊', parentId: 0}
                 ]);
             }
-            renderUI();
-        });
+            await renderUI();
+        }
 
-        // 2. 更新整體介面
         async function renderUI() {
             await renderMenu(); 
             await renderGallery();
             
-            // 抓取大類
-            const cats = await db.categories.filter(c => !c.parentId).toArray();
+            // 提取 parentId 為 0 的大類
+            const cats = await db.categories.filter(c => c.parentId === 0).toArray();
             
-            // 更新 Modal 內的選單
-            document.getElementById('itemCategory').innerHTML = cats.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
-            document.getElementById('manageParent').innerHTML = `<option value="none">建立為大類 (根類別)</option>` + 
-                                                               cats.map(c => `<option value="${c.id}">子系列 ⮕ ${c.name}</option>`).join('');
+            const select = document.getElementById('itemCategory');
+            const manageParent = document.getElementById('manageParent');
             
-            updateSubCatDropdown();
+            if (cats.length > 0) {
+                select.innerHTML = cats.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+                manageParent.innerHTML = `<option value="0">建立為大類 (根類別)</option>` + 
+                                         cats.map(c => `<option value="${c.id}">子系列 ⮕ ${c.name}</option>`).join('');
+            } else {
+                select.innerHTML = `<option value="">請先至管理新增分類</option>`;
+                manageParent.innerHTML = `<option value="0">建立為大類 (根類別)</option>`;
+            }
+            
+            await updateSubCatDropdown();
             updateStats();
         }
 
@@ -235,10 +247,9 @@
             document.getElementById('itemSubCategory').innerHTML = `<option value="">(無)</option>` + subs.map(s=>`<option value="${s.name}">${s.name}</option>`).join('');
         }
 
-        // 3. 渲染側邊欄分類選單
         async function renderMenu() {
             const container = document.getElementById('categoryMenu');
-            const cats = await db.categories.filter(c => !c.parentId).toArray();
+            const cats = await db.categories.filter(c => c.parentId === 0).toArray();
             let h = `<button onclick="setF('全部','全部')" class="w-full text-left px-4 py-2 rounded-xl text-xs font-bold transition ${curCat==='全部'?'active-cat':'text-slate-500'}">全部收藏</button>`;
             
             for (let c of cats) {
@@ -250,7 +261,6 @@
             container.innerHTML = h;
         }
 
-        // 4. 渲染主收藏牆
         async function renderGallery() {
             const s = document.getElementById('searchInput').value.toLowerCase();
             const items = await db.items.toArray();
@@ -283,7 +293,6 @@
             `).join('');
         }
 
-        // 5. 展開詳情視窗
         async function showDetail(id) {
             const i = await db.items.get(id);
             detailImgs = i.images || [];
@@ -328,7 +337,6 @@
             updateDetailImg();
         }
 
-        // 6. 編輯項目功能
         async function openEdit(i) {
             closeModal('detailModal');
             document.getElementById('itemId').value = i.id;
@@ -340,8 +348,7 @@
             document.getElementById('itemDate').value = i.date || '';
             document.getElementById('itemNote').value = i.note || '';
             
-            // 自動選取大類
-            const cat = await db.categories.where({parentId: null, name: i.category}).first();
+            const cat = await db.categories.where({parentId: 0, name: i.category}).first();
             if (cat) {
                 document.getElementById('itemCategory').value = cat.id;
                 await updateSubCatDropdown();
@@ -352,7 +359,6 @@
             document.getElementById('itemModal').classList.remove('hidden');
         }
 
-        // 7. 表單提交儲存
         document.getElementById('itemForm').onsubmit = async (e) => {
             e.preventDefault();
             const id = document.getElementById('itemId').value;
@@ -389,12 +395,11 @@
             renderUI();
         };
 
-        // 8. 管理類別與系列
         async function openManageModal() {
             const all = await db.categories.toArray();
             document.getElementById('manageList').innerHTML = all.map(c => `
                 <li class="flex justify-between items-center p-3 text-xs font-bold text-slate-600">
-                    <span>${c.parentId ? '╰── ' : '● '}${c.name}</span>
+                    <span>${c.parentId !== 0 ? '╰── ' : '● '}${c.name}</span>
                     <button onclick="deleteCat(${c.id})" class="text-rose-400 hover:text-rose-600">✕</button>
                 </li>
             `).join('');
@@ -405,7 +410,7 @@
             const parentVal = document.getElementById('manageParent').value;
             const name = document.getElementById('newCatInput').value.trim();
             if (name) {
-                const parentId = parentVal === 'none' ? null : parseInt(parentVal);
+                const parentId = parentVal === '0' ? 0 : parseInt(parentVal);
                 await db.categories.add({name, parentId});
                 document.getElementById('newCatInput').value = '';
                 renderUI(); 
@@ -421,7 +426,6 @@
             }
         }
 
-        // 輔助操作
         function setF(c,s){ curCat=c; curSub=s; renderUI(); }
         function closeModal(id){ document.getElementById(id).classList.add('hidden'); }
         function openAddModal() { 
@@ -432,13 +436,12 @@
         }
         function toBase64(f) { return new Promise(r => { const rd = new FileReader(); rd.readAsDataURL(f); rd.onload = () => r(rd.result); }); }
         
-        // 匯出 / 匯入 JSON 備份
         async function exportData() {
-            const d = { items: await db.items.toArray(), categories: await db.categories.toArray(), version: 7 };
+            const d = { items: await db.items.toArray(), categories: await db.categories.toArray(), version: 8 };
             const blob = new Blob([JSON.stringify(d)], {type:"application/json"});
             const a = document.createElement('a'); 
             a.href = URL.createObjectURL(blob); 
-            a.download = `收藏庫備份V7_${new Date().toLocaleDateString()}.json`; 
+            a.download = `收藏庫備份V8_${new Date().toLocaleDateString()}.json`; 
             a.click();
         }
 
@@ -453,6 +456,9 @@
             };
             reader.readAsText(e.target.files[0]);
         }
+
+        // 啟動資料庫
+        init();
     </script>
 </body>
 </html>
